@@ -18,27 +18,27 @@ import re
 import setuptools
 
 # for simplicity we actually store the version in the __version__ attribute in the source
-here = os.path.realpath(os.path.dirname(__file__))
-with open(os.path.join(here, 'torchsde', '__init__.py')) as f:
-    meta_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
-    if meta_match:
-        version = meta_match.group(1)
-    else:
-        raise RuntimeError("Unable to find __version__ string.")
+#here = os.path.realpath(os.path.dirname(__file__))
+#with open(os.path.join(here, 'tfsde', '__init__.py')) as f:
+#    meta_match = re.search(r"^__version__ = ['\"]([^'\"]*)['\"]", f.read(), re.M)
+#    if meta_match:
+#        version = meta_match.group(1)
+#    else:
+#        raise RuntimeError("Unable to find __version__ string.")
 
-with open(os.path.join(here, 'README.md')) as f:
-    readme = f.read()
+#with open(os.path.join(here, 'README.md')) as f:
+#    readme = f.read()
 
 setuptools.setup(
-    name="torchsde",
-    version=version,
+    name="tfsde",
+    version="0.1",
     author="Xuechen Li",
     author_email="lxuechen@cs.toronto.edu",
     description="SDE solvers and stochastic adjoint sensitivity analysis in PyTorch.",
-    long_description=readme,
-    long_description_content_type="text/markdown",
-    url="https://github.com/google-research/torchsde",
-    packages=setuptools.find_packages(exclude=['benchmarks', 'diagnostics', 'examples', 'tests']),
+    #long_description=readme,
+    #long_description_content_type="text/markdown",
+    #url="https://github.com/google-research/torchsde",
+    packages=setuptools.find_packages(exclude=['examples']),
     install_requires=[
         "boltons>=20.2.1",
         "numpy==1.19.*;python_version<'3.7'",
