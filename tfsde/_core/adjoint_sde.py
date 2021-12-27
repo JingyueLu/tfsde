@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import torch
+import tensorflow as tf
 
 from . import base_sde
 from . import misc
@@ -25,7 +25,7 @@ class AdjointSDE(base_sde.BaseSDE):
     def __init__(self,
                  forward_sde: base_sde.ForwardSDE,
                  params: TensorOrTensors,
-                 shapes: Sequence[torch.Size]):
+                 shapes: Sequence[tf.shape]):
         # There's a mapping from the noise type of the forward SDE to the noise type of the adjoint.
         # Usually, these two aren't the same, e.g. when the forward SDE has additive noise, the adjoint SDE's diffusion
         # is a linear function of the adjoint variable, so it is not of additive noise.
@@ -71,53 +71,13 @@ class AdjointSDE(base_sde.BaseSDE):
         # then y0 may have a history and these checks will fail. This is a spurious failure as
         # `torch.autograd.Function.forward` has an implicit `torch.no_grad()` guard, i.e. we definitely don't want to
         # use its history there.
-        assert t.is_leaf, "Internal error: please report a bug to torchsde"
-        assert y_aug.is_leaf, "Internal error: please report a bug to torchsde"
-        if v is not None:
-            assert v.is_leaf, "Internal error: please report a bug to torchsde"
-
-        requires_grad = torch.is_grad_enabled()
 
         if extra_states:
             shapes = self._shapes
         else:
             shapes = self._shapes[:2]
-        numel = sum(shape.numel() for shape in shapes)
-        y, adj_y, *extra_states = misc.flat_to_shape(y_aug.squeeze(0)[:numel], shapes)
+        numel = sum(tf.math.reduce_prod(shape) for shape in shapes)
+        y, adj_y, *extra_states = misc.flat_to_shape(tf.squeeze(y_aug, 0)[:numel], shapes)
 
-        # To support the later differentiation wrt y, we set it to require_grad if it doesn't already.
-        if not y.requires_grad:
-            y = y.detach().requires_grad_()
-        return y, adj_y, extra_states, requires_grad
-
-    def _f_uncorrected(self, f, y, adj_y, requires_grad):
-        vjp_y_and_params = misc.vjp(
-            outputs=f,
-            inputs=[y] + self.params,
-            grad_outputs=adj_y,
-            allow_unused=True,
-            retain_graph=True,
-            create_graph=requires_grad
-        )
-        if not requires_grad:
-            # We had to build a computational graph to be able to compute the above vjp.
-            # However, if we don't require_grad then we don't need to backprop through this function, so we should
-            # delete the computational graph to avoid a memory leak. (Which for example would keep the local
-            # variable `y` in memory: f->grad_fn->...->AccumulatedGrad->y.)
-
-            # Note: `requires_grad` might not be equal to what `torch.is_grad_enabled` returns here.
-            f = f.detach()
-        return misc.flatten((-f, *vjp_y_and_params)).unsqueeze(0)
-
-
-    ########################################
-    #                  f                   #
-    ########################################
-
-    def f_uncorrected(self, t, y_aug):  # For Ito additive and Stratonovich.
-        y, adj_y, _, requires_grad = self.get_state(t, y_aug)
-        with torch.enable_grad():
-            f = self.forward_sde.f(-t, y)
-            return self._f_uncorrected(f, y, adj_y, requires_grad)
-
+        return y, adj_y, extra_states
 

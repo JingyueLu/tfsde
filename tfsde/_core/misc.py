@@ -36,76 +36,21 @@ def flatten(sequence):
     return tf.concat([tf.reshape(p, -1) for p in sequence], axis = 0) if len(sequence) > 0 else tf.constant([])
 
 
-def convert_none_to_zeros(sequence, like_sequence):
-    import pdb; pdb.set_trace()
-    return [torch.zeros_like(q) if p is None else p for p, q in zip(sequence, like_sequence)]
-
-
-def make_seq_requires_grad(sequence):
-    import pdb; pdb.set_trace()
-    return [p if p.requires_grad else p.detach().requires_grad_(True) for p in sequence]
-
 
 def is_strictly_increasing(ts):
     return all(x < y for x, y in zip(ts[:-1], ts[1:]))
 
 
-def is_nan(t):
-    import pdb; pdb.set_trace()
-    return torch.any(torch.isnan(t))
-
 
 def seq_add(*seqs):
-    import pdb; pdb.set_trace()
     return [sum(seq) for seq in zip(*seqs)]
 
-
-def seq_sub(xs, ys):
-    import pdb; pdb.set_trace()
-    return [x - y for x, y in zip(xs, ys)]
 
 
 def batch_mvp(m, v):
     return tf.squeeze(tf.matmul(m, tf.expand_dims(v, axis=-1)), axis=-1)
 
 
-def stable_division(a, b, epsilon=1e-7):
-    import pdb; pdb.set_trace()
-    b = torch.where(b.abs().detach() > epsilon, b, torch.full_like(b, fill_value=epsilon) * b.sign())
-    return a / b
-
-
-def vjp(outputs, inputs, **kwargs):
-    import pdb; pdb.set_trace()
-    if torch.is_tensor(inputs):
-        inputs = [inputs]
-    _dummy_inputs = [torch.as_strided(i, (), ()) for i in inputs]  # Workaround for PyTorch bug #39784.  # noqa: 74
-
-    if torch.is_tensor(outputs):
-        outputs = [outputs]
-    outputs = make_seq_requires_grad(outputs)
-
-    _vjp = torch.autograd.grad(outputs, inputs, **kwargs)
-    return convert_none_to_zeros(_vjp, inputs)
-
-
-def jvp(outputs, inputs, grad_inputs=None, **kwargs):
-    # Unlike `torch.autograd.functional.jvp`, this function avoids repeating forward computation.
-    import pdb; pdb.set_trace()
-    if torch.is_tensor(inputs):
-        inputs = [inputs]
-    _dummy_inputs = [torch.as_strided(i, (), ()) for i in inputs]  # Workaround for PyTorch bug #39784.  # noqa: 88
-
-    if torch.is_tensor(outputs):
-        outputs = [outputs]
-    outputs = make_seq_requires_grad(outputs)
-
-    dummy_outputs = [torch.zeros_like(o, requires_grad=True) for o in outputs]
-    _vjp = torch.autograd.grad(outputs, inputs, grad_outputs=dummy_outputs, create_graph=True, allow_unused=True)
-    _vjp = make_seq_requires_grad(convert_none_to_zeros(_vjp, inputs))
-
-    _jvp = torch.autograd.grad(_vjp, dummy_outputs, grad_outputs=grad_inputs, **kwargs)
-    return convert_none_to_zeros(_jvp, dummy_outputs)
 
 
 def flat_to_shape(flat_tensor, shapes):
@@ -113,6 +58,5 @@ def flat_to_shape(flat_tensor, shapes):
 
     `flat_tensor` must have exactly the number of elements as stated in `shapes`.
     """
-    import pdb; pdb.set_trace()
-    numels = [shape.numel() for shape in shapes]
-    return [flat.reshape(shape) for flat, shape in zip(flat_tensor.split(split_size=numels), shapes)]
+    numels = [tf.math.reduce_prod(shape) for shape in shapes]
+    return [tf.reshape(flat, shape) for flat, shape in zip(tf.split(flat_tensor,numels), shapes)]

@@ -41,28 +41,44 @@ class _SdeintAdjointMethod:
         self.len_extras = len_extras
         self.extras_and_adjoint_params = extras_and_adjoint_params
         self.extra_solver_state = self.extras_and_adjoint_params[:self.len_extras]
-        self.adjoint_params = self.extras_and_adjoint_params[self.len_extras:]
+        self.adjoint_params = list(self.extras_and_adjoint_params[self.len_extras:])
+        self.y0_coeffs_provided = False
     
 
         self.f = tf.custom_gradient(lambda x: _SdeintAdjointMethod._f(self, x))
 
 
-    def _f(self, y0):
+    def _f(self, y0_list):
+        # change y0 to a constant tensor with no trainable attribute
+        y0 = y0_list[0]
+        y0 = y0+0
         
-        ys, extra_solver_state = self.solver.integrate(y0, self.ts, self.extra_solver_state)
+        if len(y0_list) == 2+self.len_extras:
+            self.y0_coeffs_provided = True
 
+        ys, extra_solver_state = self.solver.integrate(y0, self.ts, self.extra_solver_state)
+        
+        # udpate extra_solver_state
         self.extra_solver_state = extra_solver_state
 
+        self.saved_for_backward = (ys, self.ts, *extra_solver_state)
+        
+        # return a combined tensor list of ys and extra_solver_state
+        output = [ys] + list(extra_solver_state)
+        shapes = [t.shape for t in output]
+        self.output_shapes = shapes
+        output = misc.flatten(output)
         
         def grad_fn(upstream, variables):  # noqa
-            extra_solver_state = self.extra_solver_state
-            adjoint_params = self.adjoint_params
+            ys, ts, *extras_solver_state = self.saved_for_backward
+           
+            grads = misc.flat_to_shape(upstream, self.output_shapes)
+            aug_state = [ys[-1], grads[0][-1]] + grads[1:] + [tf.zeros(param.shape) for param in self.adjoint_params]
 
-            aug_state = [ys[-1], upstream[-1]] + [tf.zeros(param.shape) for param in adjoint_params]
             shapes = [t.shape for t in aug_state]
             aug_state = misc.flatten(aug_state)
             aug_state = tf.expand_dims(aug_state, axis=0)  # dummy batch dimension
-            adjoint_sde = AdjointSDE(self.sde, adjoint_params, shapes)
+            adjoint_sde = AdjointSDE(self.sde, self.adjoint_params, shapes)
             reverse_bm = ReverseBrownian(self.bm)
 
             solver_fn = methods.select(method=self.adjoint_method, sde_type=adjoint_sde.sde_type)
@@ -73,7 +89,7 @@ class _SdeintAdjointMethod:
                 dt_min=self.dt_min,
                 options=self.adjoint_options
             )
-            
+
             internal_adjoint = _SdeintAdjointMethod(adjoint_sde,
                                                     None,
                                                     self.dt,
@@ -85,34 +101,56 @@ class _SdeintAdjointMethod:
                                                     self.adjoint_options,
                                                     len(extra_solver_state),
                                                     *extra_solver_state,
-                                                    *adjoint_params)
+                                                    *self.adjoint_params)
 
 
 
             for i in range(ys.shape[0] - 1, 0, -1):
                 internal_adjoint.ts = tf.stack([-self.ts[i], -self.ts[i - 1]])
-                aug_state = tf.stop_gradient(internal_adjoint._f(aug_state))
-
-                aug_state = misc.flat_to_shape(aug_state.squeeze(0), shapes)
+                output_state, _  = internal_adjoint._f([aug_state])
+                
+                results = misc.flat_to_shape(output_state, internal_adjoint.output_shapes) 
+                aug_state  = results[0][-1]
+                aug_state = misc.flat_to_shape(tf.squeeze(aug_state, axis=0), shapes)
                 aug_state[0] = ys[i - 1]
-                aug_state[1] = aug_state[1] + grad_ys[i - 1]
+                aug_state[1] = aug_state[1] + grads[0][i - 1]
+
                 if i != 1:
                     aug_state = misc.flatten(aug_state)
-                    aug_state = aug_state.unsqueeze(0)  # dummy batch dimension
+                    aug_state = tf.expand_dims(aug_state, axis=0)  # dummy batch dimension
 
-            if saved_extras_for_backward:
-                out = aug_state[1:]
+            if self.y0_coeffs_provided == False:
+                out_1 = aug_state[1:1+len(grads)]
+                param_order = {}
+                for i in range(len(self.adjoint_params)):
+                    param_order[self.adjoint_params[i].name] = i
+
+                param_out = aug_state[1+len(grads):]
+                # reorder param_out according to variables' order
+                out_2 = []
+                for i in variables:
+                    out_2.append(param_out[param_order[i.name]])
+                return out_1, out_2
             else:
-                out = [aug_state[1]] + ([None] * len_extras) + aug_state[2:]
+                out_1 = aug_state[1:2+len(grads)]
+                param_order={}
+                for i in range(1, len(self.adjoint_params)):
+                    param_order[self.adjoint_params[i].name] = i-1
 
-            return upstream
+                param_out = aug_state[2+len(grads):]
+                # reorder param_out according to variables' order
+                out_2 = []
+                for i in variables:
+                    out_2.append(param_out[param_order[i.name]])
+                return out_1, out_2
 
-        return ys, grad_fn
+        return output, grad_fn
 
 
 def sdeint_adjoint(sde: layers.Layer,
                    y0: Tensor,
                    ts: Vector,
+                   y0_coeffs_provided = False,
                    bm: Optional[BaseBrownian] = None,
                    method: Optional[str] = None,
                    adjoint_method: Optional[str] = None,
@@ -198,7 +236,7 @@ def sdeint_adjoint(sde: layers.Layer,
         adjoint as is used for the first-order adjoint.
     """
     misc.handle_unused_kwargs(unused_kwargs, msg="`sdeint_adjoint`")
-    #import pdb; pdb.set_trace()
+
     del unused_kwargs
 
     if adjoint_params is None and not isinstance(sde, layers.Layer):
@@ -212,8 +250,8 @@ def sdeint_adjoint(sde: layers.Layer,
     
     # trainable_weights and trainable_variables are the same
     adjoint_params = tuple(sde.trainable_variables) if adjoint_params is None else tuple(adjoint_params)
-    adjoint_params = filter(lambda x: hasattr(x, 'trainable'), adjoint_params)
-    adjoint_params = filter(lambda x: x.trainable, adjoint_params)
+    #adjoint_params = filter(lambda x: hasattr(x, 'trainable'), adjoint_params)
+    #adjoint_params = filter(lambda x: x.trainable, adjoint_params)
     adjoint_method = _select_default_adjoint_method(sde, method, adjoint_method)
     adjoint_options = {} if adjoint_options is None else adjoint_options.copy()
 
@@ -248,8 +286,12 @@ def sdeint_adjoint(sde: layers.Layer,
         sde, ts, dt, bm, solver, method, adjoint_method,  dt_min,
         adjoint_options, len(extra_solver_state), *extra_solver_state, *adjoint_params
     )
-    
-    ys = SdeAdjoint.f(y0)
+    if y0_coeffs_provided: 
+        output = SdeAdjoint.f([y0] + list(extra_solver_state) + [list(adjoint_params)[0]])
+    else:
+        output = SdeAdjoint.f([y0] + list(extra_solver_state))
+
+    ys = misc.flat_to_shape(output, SdeAdjoint.output_shapes)[0]
 
     return ys
 

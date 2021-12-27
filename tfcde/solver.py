@@ -111,6 +111,7 @@ class _VectorField(layers.Layer):
             out = tuple(tf.squeeze(vector_field_ @ tf.expand_dims(control_gradient_, axis =-1), axis = -1)
                         for vector_field_, control_gradient_ in zip(vector_field, control_gradient))
 
+            
         return out
 
 
@@ -180,6 +181,8 @@ def cdeint(X, func, z0, t, adjoint=True, **kwargs):
     
     # backend == "tfsde"
     sdeint = tfsde.sdeint_adjoint if adjoint else tfsde.sdeint
+    if kwargs['adjoint_params']:
+        kwargs['y0_coeffs_provided'] = True
     kwargs['adjoint_params'] = kwargs['adjoint_params'] + tuple(vector_field.trainable_variables)
     out = sdeint(sde=vector_field, y0=z0, ts=t, **kwargs)
 

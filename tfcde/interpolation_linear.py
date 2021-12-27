@@ -130,11 +130,11 @@ class LinearInterpolation(interpolation_base.InterpolationBase):
             t = tf.linspace(0, coeffs.shape[-2] - 1, coeffs.shape[-2])
             t = tf.cast(t, dtype=coeffs.dtype)
 
-        derivs = (coeffs[..., 1:, :] - coeffs[..., :-1, :]) / tf.expand_dims(t[1:] - t[:-1], axis = -1)
+        #derivs = (coeffs[..., 1:, :] - coeffs[..., :-1, :]) / tf.expand_dims(t[1:] - t[:-1], axis = -1)
 
         self._t =  t
         self._coeffs = coeffs
-        self._derivs = derivs
+        #self._derivs = derivs
 
     @property
     def grid_points(self):
@@ -145,7 +145,7 @@ class LinearInterpolation(interpolation_base.InterpolationBase):
         return tf.stack([self._t[0], self._t[-1]])
 
     def _interpret_t(self, t):
-        maxlen = self._derivs.shape[-2] - 1
+        maxlen = self._coeffs.shape[-2] - 2
         ## clamp because t may go outside of [t[0], t[-1]]; this is fine
         index = tf.clip_by_value(tf.raw_ops.Bucketize(input=t, boundaries=self._t.numpy().tolist()) - 1, 0, maxlen)
         fractional_part = t- self._t[index]
@@ -162,6 +162,6 @@ class LinearInterpolation(interpolation_base.InterpolationBase):
         return prev_coeff + fractional_part * (next_coeff - prev_coeff) / tf.expand_dims(diff_t, axis= -1)
 
     def derivative(self, t):
-        fractional_part, index = self._interpret_t(t)
-        deriv = self._derivs[..., index, :]
+        fractional_part, index = self._interpret_t(t-1)
+        deriv = (self._coeffs[..., index+1, :] - self._coeffs[..., index, :]) / (self._t[index+1] - self._t[index])
         return deriv

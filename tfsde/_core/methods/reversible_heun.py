@@ -45,6 +45,13 @@ from .. import misc
 from ...settings import SDE_TYPES, NOISE_TYPES, LEVY_AREA_APPROXIMATIONS, METHODS
 
 
+# Testing
+import torch
+bm_sample = torch.load('/home/jodie/tfsde/tests/torch_model_info/bm_sample.pth')
+bmrv_sample = torch.load('/home/jodie/tfsde/tests/torch_model_info/bmrv_sample.pth')
+bm3_sample = torch.load('/home/jodie/tfsde/tests/torch_model_info/bm3_sample.pth')
+bmrv3_sample = torch.load('/home/jodie/tfsde/tests/torch_model_info/bmrv3_sample.pth')
+
 class ReversibleHeun(base_solver.BaseSDESolver):
     weak_order = 1.0
     sde_type = SDE_TYPES.stratonovich
@@ -64,8 +71,18 @@ class ReversibleHeun(base_solver.BaseSDESolver):
         # g is a diffusion-like quantity
         # z is a state-like quantity (like y)
         dt = t1 - t0
-        dW = self.bm(t0, t1)
+        #dW = self.bm(t0, t1)
         
+        # Testing
+        #dW = (dW*0+0.5)*torch.tensor([[1],[-1]]).cuda()
+        if self.bm.size()[1] == 1:
+            dW = bm_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
+            dW = tf.constant(dW)
+
+        if self.bm.size()[1] == 3:
+            dW = bm3_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
+            dW = tf.constant(dW)
+
         z1 = 2 * y0 - z0 + f0 * dt + self.sde.prod(g0, dW)
         f1, g1 = self.sde.f_and_g(t1, z1)
         y1 = y0 + (f0 + f1) * (0.5 * dt) + self.sde.prod(g0 + g1, 0.5 * dW)
@@ -98,11 +115,21 @@ class AdjointReversibleHeun(base_solver.BaseSDESolver):
     def step(self, t0, t1, y0, extra0):
         forward_f0, forward_g0, forward_z0 = extra0
         dt = t1 - t0
-        dW = self.bm(t0, t1)
+        #dW = self.bm(t0, t1)
+
+        #dW = (dW*0+0.5)*torch.tensor([[1],[-1]]).cuda()
+        if self.bm.size()[1] == 1:
+            dW = bmrv_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
+            dW = tf.constant(dW)
+
+        if self.bm.size()[1] == 3:
+            dW = bmrv3_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
+            dW = tf.constant(dW)
+            
+
         half_dt = 0.5 * dt
         half_dW = 0.5 * dW
-        forward_y0, adj_y0, (adj_f0, adj_g0, adj_z0, *adj_params), requires_grad = self.sde.get_state(t0, y0,
-                                                                                                      extra_states=True)
+        forward_y0, adj_y0, (adj_f0, adj_g0, adj_z0, *adj_params) = self.sde.get_state(t0, y0, extra_states=True)
         adj_y0_half_dt = adj_y0 * half_dt
         adj_y0_half_dW = self._adjoint_of_prod(adj_y0, half_dW)
 
@@ -116,17 +143,16 @@ class AdjointReversibleHeun(base_solver.BaseSDESolver):
 
         # TODO: efficiency. It should be possible to make one fewer forward call by re-using the forward computation
         #  in the previous step.
-        with torch.enable_grad():
-            if not forward_z0.requires_grad:
-                forward_z0 = forward_z0.detach().requires_grad_()
+        with tf.GradientTape() as g:
+            g.watch(forward_z0)
+            if isinstance(self.sde.params[0], tf.Variable) == False:
+                g.watch(self.sde.params[0])
             re_forward_f0, re_forward_g0 = self.forward_sde.f_and_g(-t0, forward_z0)
 
-            vjp_z, *vjp_params = misc.vjp(outputs=(re_forward_f0, re_forward_g0),
-                                          inputs=[forward_z0] + self.sde.params,
-                                          grad_outputs=[adj_f0, adj_g0],
-                                          allow_unused=True,
-                                          retain_graph=True,
-                                          create_graph=requires_grad)
+        vjp_z, *vjp_params = g.gradient(target = (re_forward_f0, re_forward_g0),
+                                        sources= [forward_z0] + self.sde.params,
+                                        output_gradients=[adj_f0, adj_g0])
+        
         adj_z0 = adj_z0 + vjp_z
         adj_params = misc.seq_add(adj_params, vjp_params)
 
@@ -139,6 +165,6 @@ class AdjointReversibleHeun(base_solver.BaseSDESolver):
         adj_f1 = adj_f1 + adj_z0 * dt
         adj_g1 = adj_g1 + self._adjoint_of_prod(adj_z0, dW)
 
-        y1 = misc.flatten([forward_y1, adj_y1, adj_f1, adj_g1, adj_z1] + adj_params).unsqueeze(0)
+        y1 = tf.expand_dims(misc.flatten([forward_y1, adj_y1, adj_f1, adj_g1, adj_z1] + adj_params), axis = 0)
 
         return y1, (forward_f1, forward_g1, forward_z1)
