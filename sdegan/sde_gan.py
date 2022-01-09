@@ -125,7 +125,6 @@ class Generator(keras.Model):
 
         # Actually solve the SDE.
         init_noise = tf.random.normal([batch_size, self._initial_noise_size])
-        x0 = self._initial(init_noise)
         
         ###########################
         # Testing
@@ -133,6 +132,7 @@ class Generator(keras.Model):
         #init_noise = torch.load('tests/torch_model_info/init_noise.pth')
         #init_noise = tf.constant(init_noise)
         ##########################
+        x0 = self._initial(init_noise)
 
         # We use the reversible Heun method to get accurate gradients whilst using the adjoint method.
         xs = tfsde.sdeint_adjoint(self._func, x0, ts, method='reversible_heun', dt=1.0,

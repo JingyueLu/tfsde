@@ -15,8 +15,7 @@ def tf_torch_compare(path = 'tests/torch_model_info/', batch_size =2, tol=1e-4):
     # NOTE: for this work, we have to remove all the random factor
     #       by seting the same fixed values for bm and init_noise
     
-    print("Warning: This test should only be conducted when all random factors are
-          removed.") 
+    print("Warning: This test should only be conducted when all random factors are removed.") 
     print("In this case, both models should  use the same fixed values for bm and init_noise.")
 
     # initilize the model

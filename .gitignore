@@ -13,5 +13,3 @@ CMakeLists.txt
 restats
 *-darwin.so
 **.pyc
-logs
-models
