@@ -42,12 +42,6 @@ class AdjointSDE(base_sde.BaseSDE):
         self.params = params
         self._shapes = shapes
 
-        # Register the core functions. This avoids polluting the codebase with if-statements and achieves speed-ups
-        # by making sure it's a one-time cost. The `sde_type` and `noise_type` of the forward SDE determines the
-        # registered functions.
-        self.f = {
-            SDE_TYPES.stratonovich: self.f_uncorrected
-        }.get(forward_sde.sde_type)
 
     ########################################
     #            Helper functions          #

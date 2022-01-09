@@ -46,11 +46,11 @@ from ...settings import SDE_TYPES, NOISE_TYPES, LEVY_AREA_APPROXIMATIONS, METHOD
 
 
 # Testing
-import torch
-bm_sample = torch.load('/home/jodie/tfsde/tests/torch_model_info/bm_sample.pth')
-bmrv_sample = torch.load('/home/jodie/tfsde/tests/torch_model_info/bmrv_sample.pth')
-bm3_sample = torch.load('/home/jodie/tfsde/tests/torch_model_info/bm3_sample.pth')
-bmrv3_sample = torch.load('/home/jodie/tfsde/tests/torch_model_info/bmrv3_sample.pth')
+#import torch
+#bm_sample = torch.load('tests/torch_model_info/bm_sample.pth')
+#bmrv_sample = torch.load('tests/torch_model_info/bmrv_sample.pth')
+#bm3_sample = torch.load('tests/torch_model_info/bm3_sample.pth')
+#bmrv3_sample = torch.load('tests/torch_model_info/bmrv3_sample.pth')
 
 class ReversibleHeun(base_solver.BaseSDESolver):
     weak_order = 1.0
@@ -71,17 +71,18 @@ class ReversibleHeun(base_solver.BaseSDESolver):
         # g is a diffusion-like quantity
         # z is a state-like quantity (like y)
         dt = t1 - t0
-        #dW = self.bm(t0, t1)
+        dW = self.bm(t0, t1)
         
+        ################################
         # Testing
-        #dW = (dW*0+0.5)*torch.tensor([[1],[-1]]).cuda()
-        if self.bm.size()[1] == 1:
-            dW = bm_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
-            dW = tf.constant(dW)
+        #if self.bm.size()[1] == 1:
+        #    dW = bm_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
+        #    dW = tf.constant(dW)
 
-        if self.bm.size()[1] == 3:
-            dW = bm3_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
-            dW = tf.constant(dW)
+        #if self.bm.size()[1] == 3:
+        #    dW = bm3_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
+        #    dW = tf.constant(dW)
+        ##############################
 
         z1 = 2 * y0 - z0 + f0 * dt + self.sde.prod(g0, dW)
         f1, g1 = self.sde.f_and_g(t1, z1)
@@ -115,16 +116,18 @@ class AdjointReversibleHeun(base_solver.BaseSDESolver):
     def step(self, t0, t1, y0, extra0):
         forward_f0, forward_g0, forward_z0 = extra0
         dt = t1 - t0
-        #dW = self.bm(t0, t1)
+        dW = self.bm(t0, t1)
 
-        #dW = (dW*0+0.5)*torch.tensor([[1],[-1]]).cuda()
-        if self.bm.size()[1] == 1:
-            dW = bmrv_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
-            dW = tf.constant(dW)
+        ################################
+        # Testing 
+        #if self.bm.size()[1] == 1:
+        #    dW = bmrv_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
+        #    dW = tf.constant(dW)
 
-        if self.bm.size()[1] == 3:
-            dW = bmrv3_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
-            dW = tf.constant(dW)
+        #if self.bm.size()[1] == 3:
+        #    dW = bmrv3_sample[f'{int(t0.numpy())}_{int(t1.numpy())}']
+        #    dW = tf.constant(dW)
+        ###############################
             
 
         half_dt = 0.5 * dt

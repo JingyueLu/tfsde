@@ -13,14 +13,11 @@
 # limitations under the License.
 
 from .reversible_heun import ReversibleHeun, AdjointReversibleHeun
-from .srk import SRK
 from ...settings import METHODS, SDE_TYPES
 
 
 def select(method, sde_type):
-    if method == METHODS.srk:
-        return SRK
-    elif method == METHODS.reversible_heun:
+    if method == METHODS.reversible_heun:
         return ReversibleHeun
     elif method == METHODS.adjoint_reversible_heun:
         return AdjointReversibleHeun

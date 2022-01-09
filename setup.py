@@ -45,7 +45,7 @@ setuptools.setup(
         "numpy>=1.19.*;python_version>='3.7'",
         "scipy==1.5.*;python_version<'3.7'",
         "scipy>=1.5;python_version>='3.7'",
-        "torch>=1.6.0",
+        "tensorflow>=2.4.1",
         "trampoline>=0.1.2",
     ],
     python_requires='~=3.6',

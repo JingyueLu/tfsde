@@ -117,7 +117,7 @@ def check_contract(sde, y0, ts, bm, method,  options, names):
 
     if not tf.is_tensor(y0):
         raise ValueError("`y0` must be a tf.Tensor.")
-    if y0.ndim != 2:
+    if len(y0.shape) != 2:
         raise ValueError("`y0` must be a 2-dimensional tensor of shape (batch, channels).")
 
 
@@ -132,9 +132,9 @@ def check_contract(sde, y0, ts, bm, method,  options, names):
         if not isinstance(ts, (tuple, list)) or not all(isinstance(t, (float, int)) for t in ts):
             raise ValueError("Evaluation times `ts` must be a 1-D Tensor or list/tuple of floats.")
         ts = tf.constant(ts, dtype=y0.dtype)
-
     if not misc.is_strictly_increasing(ts):
         raise ValueError("Evaluation times `ts` must be strictly increasing.")
+
 
     batch_sizes = []
     state_sizes = []
@@ -212,10 +212,7 @@ def check_contract(sde, y0, ts, bm, method,  options, names):
     sde = base_sde.ForwardSDE(sde)
 
     if bm is None:
-        if method == METHODS.srk:
-            levy_area_approximation = LEVY_AREA_APPROXIMATIONS.space_time
-        else:
-            levy_area_approximation = LEVY_AREA_APPROXIMATIONS.none
+        levy_area_approximation = LEVY_AREA_APPROXIMATIONS.none
         bm = BrownianInterval(t0=ts[0], t1=ts[-1], size=(batch_sizes[0], noise_sizes[0]), dtype=y0.dtype,
                               levy_area_approximation=levy_area_approximation)
 

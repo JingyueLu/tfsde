@@ -27,7 +27,6 @@ class ContainerMeta(type):
 # TODO: consider moving all these enums into some appropriate section of the code, rather than having them be global
 #  like this. (e.g. instead set METHODS = {'euler': Euler, ...} in methods/__init__.py)
 class METHODS(metaclass=ContainerMeta):
-    srk = 'srk'
     reversible_heun = 'reversible_heun'
     adjoint_reversible_heun = 'adjoint_reversible_heun'
 

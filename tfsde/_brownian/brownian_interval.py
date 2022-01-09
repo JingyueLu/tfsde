@@ -41,7 +41,7 @@ def _is_scalar(x):
 def _assert_floating_tensor(name, tensor):
     if not tf.is_tensor(tensor):
         raise ValueError(f"{name}={tensor} should be a Tensor.")
-    if not tensor.is_floating_point():
+    if not tensor.dtype.is_floating:
         raise ValueError(f"{name}={tensor} should be floating point.")
 
 
@@ -95,7 +95,7 @@ def _davie_foster_approximation(W, H, h, levy_area_approximation, get_noise):
             # Foster's additional correction to Davie's approximation
             tenth_h = 0.1 * h
             H_squared = H ** 2
-            std = (tenth_h * (tenth_h + tf.expand_dims(H_squared, axis=-1) + tf.expand_dims(H_squared, axis=-2))).sqrt()
+            std = tf.math.sqrt(tenth_h * (tenth_h + tf.expand_dims(H_squared, axis=-1) + tf.expand_dims(H_squared, axis=-2)))
         else:  # davie approximation
             std = math.sqrt(_r12 * h ** 2)
         a_tilde = std * noise
