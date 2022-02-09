@@ -1,0 +1,32 @@
+ÙÞ¿øÖ¨¾Î>¡‹˜½2ƒš¿þÿÿ>éÝ¾JèÞ>Ø=è¼±p'>ý9Â½ÔhÃ;Â
+'
+_initial
+	_func
+_readout
+
+
+kernel
+bias
+
+_module
+
+
+kernel
+bias
+ZX
+VARIABLE_VALUEdiscriminator/dense/kernel*_initial/kernel/.ATTRIBUTES/VARIABLE_VALUE
+VT
+VARIABLE_VALUEdiscriminator/dense/bias(_initial/bias/.ATTRIBUTES/VARIABLE_VALUE
+
+
+	kernel
+
+bias
+\Z
+VARIABLE_VALUEdiscriminator/dense_2/kernel*_readout/kernel/.ATTRIBUTES/VARIABLE_VALUE
+XV
+VARIABLE_VALUEdiscriminator/dense_2/bias(_readout/bias/.ATTRIBUTES/VARIABLE_VALUE
+tr
+VARIABLE_VALUE/discriminator/discriminator_func/dense_1/kernel/_func/_module/kernel/.ATTRIBUTES/VARIABLE_VALUE
+pn
+VARIABLE_VALUE-discriminator/discriminator_func/dense_1/bias-_func/_module/bias/.ATTRIBUTES/VARIABLE_VALUE

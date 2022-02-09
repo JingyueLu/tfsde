@@ -13,3 +13,6 @@ CMakeLists.txt
 restats
 *-darwin.so
 **.pyc
+prev_logs/
+prev_models/
+sdegan/previous/

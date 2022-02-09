@@ -35,38 +35,27 @@ import tfsde
 default_initializer = keras.initializers.HeUniform()
 default_initializer.scale = 1
 
-class LipSwish(layers.Layer):
-    def call(self, x):
-        return 0.909 * tf.nn.silu(x)
 
+class AdditiveLayer(layers.Layer):
+    def __init__(self, units=32):
+        super(AdditiveLayer, self).__init__()
+        self.units = units
 
-class MLP(layers.Layer):
-    def __init__(self, out_size, mlp_size, num_layers, tanh, initializer=None):
-        super().__init__()
+    def build(self, input_shape):
+        w_init = tf.zeros_initializer()
+        self.w = tf.Variable(
+                initial_value = w_init(shape = (input_shape[-1], self.units),
+                                       dtype = 'float32'),
+                trainable = False
+                )
+        b_init = tf.random_uniform_initializer()
+        self.b = tf.Variable(
+                initial_value = b_init(shape=(self.units,), dtype='float32'),
+                trainable = True
+                )
         
-        if initializer is None:
-            initializer = default_initializer
-
-        model_layers = [layers.Dense(mlp_size, kernel_initializer = initializer, bias_initializer=initializer),
-                 LipSwish()]
-        for _ in range(num_layers - 1):
-            model_layers.append(layers.Dense(mlp_size, kernel_initializer = initializer, bias_initializer=initializer))
-            ###################
-            # LipSwish activations are useful to constrain the Lipschitz constant of the discriminator.
-            # (For simplicity we additionally use them in the generator, but that's less important.)
-            ###################
-            model_layers.append(LipSwish())
-        model_layers.append(layers.Dense(out_size, kernel_initializer = initializer, bias_initializer=initializer))
-
-        if tanh:
-            model_layers.append(layers.Activation('tanh'))
-        
-        self.model_layers = model_layers
-
-    def call(self, x):
-        for layer in self.model_layers:
-            x = layer(x)
-        return x
+    def call(self, inputs):
+        return tf.matmul(inputs, self.w) + self.b
 
 
 
@@ -78,7 +67,7 @@ class MLP(layers.Layer):
 
 class GeneratorFunc(layers.Layer):
     sde_type = 'stratonovich'
-    noise_type = 'general'
+    noise_type = 'additive'
 
     def __init__(self, noise_size, hidden_size, mlp_size, num_layers, initializer=None):
         super().__init__()
@@ -94,15 +83,17 @@ class GeneratorFunc(layers.Layer):
         ###################
         
         # NOTE: input_size = 1 + hidden_size
-        self._drift = MLP(hidden_size, mlp_size, num_layers, tanh=True, initializer = initializer)
-        self._diffusion = MLP(hidden_size * noise_size, mlp_size, num_layers, tanh=True, initializer = initializer)
+        #self._drift = AdditiveLayer(hidden_size)
+        #self._diffusion = AdditiveLayer(hidden_size)
+        self._drift = tf.Variable(tf.random.uniform([1]), name = 'drift', trainable=True)
+        self._diffusion = tf.Variable(tf.random.uniform([1]), name = 'diffusion', trainable=True)
 
     def f_and_g(self, t, x):
         # t has shape ()
         # x has shape (batch_size, hidden_size)
-        t = tf.expand_dims(tf.repeat(t, [x.shape[0]]), -1)
-        tx = tf.concat([t, x], axis=1)
-        return self._drift(tx), tf.reshape(self._diffusion(tx), [x.shape[0], self._hidden_size, self._noise_size])
+        #t = tf.expand_dims(tf.repeat(t, [x.shape[0]]), -1)
+        #tx = tf.concat([t, x], axis=1)
+        return x*0 + self._drift, tf.expand_dims(x*0 + self._diffusion, axis=2)
 
 
 ## Now we wrap it up into something that computes the SDE.
@@ -114,10 +105,10 @@ class Generator(keras.Model):
         self._initial_noise_size = initial_noise_size
         self._hidden_size = hidden_size
 
-        self._initial = MLP( hidden_size, mlp_size, num_layers, tanh=False, initializer = g_ini_init)
+        #self._initial = MLP( hidden_size, mlp_size, num_layers, tanh=False, initializer = g_ini_init)
         self._func = GeneratorFunc(noise_size, hidden_size, mlp_size, num_layers, initializer = g_func_init)
 
-        self._readout = layers.Dense(data_size, kernel_initializer = default_initializer, bias_initializer= default_initializer)
+        #self._readout = layers.Dense(data_size, kernel_initializer = default_initializer, bias_initializer= default_initializer)
 
     def call(self, inputs):
         # ts has shape (t_size,) and corresponds to the points we want to evaluate the SDE at.
@@ -126,25 +117,19 @@ class Generator(keras.Model):
         # Actually solve the SDE.
         init_noise = tf.random.normal([batch_size, self._initial_noise_size])
         
-        ###########################
-        # Testing
-        #import torch
-        #init_noise = torch.load('tests/torch_model_info/init_noise.pth')
-        #init_noise = tf.constant(init_noise)
-        ##########################
-        x0 = self._initial(init_noise)
+        x0 = tf.zeros([batch_size, 1])
 
         # We use the reversible Heun method to get accurate gradients whilst using the adjoint method.
         xs = tfsde.sdeint_adjoint(self._func, x0, ts, method='reversible_heun', dt=1.0,
                                      adjoint_method='adjoint_reversible_heun',)
         xs = tf.transpose(xs, [1, 0, 2])
-        ys = self._readout(xs)
+        #ys = self._readout(xs)
         
         ## Normalise the data to the form that the discriminator expects, in particular including time as a channel.
         
         ts = tf.tile(tf.expand_dims(tf.expand_dims(ts, -1), 0), [batch_size,1,1])
 
-        return tf.concat([ts, ys], axis=2)
+        return tf.concat([ts, xs], axis=2)
 
 
 ########################################
@@ -165,7 +150,7 @@ class DiscriminatorFunc(layers.Layer):
 
         # tanh is important for model performance
         # input_size = 1 + hidden_size
-        self._module = MLP(hidden_size * (1 + data_size), mlp_size, num_layers, tanh=True)
+        self._module = layers.Dense(hidden_size * (1 + data_size))
 
     def call(self, inputs):
         t, h = inputs
@@ -180,7 +165,7 @@ class Discriminator(keras.Model):
     def __init__(self, data_size, hidden_size, mlp_size, num_layers):
         super().__init__()
 
-        self._initial = MLP( hidden_size, mlp_size, num_layers, tanh=False)
+        self._initial = layers.Dense(hidden_size)
         self._func = DiscriminatorFunc(data_size, hidden_size, mlp_size, num_layers)
         self._readout = layers.Dense(1, kernel_initializer = default_initializer, bias_initializer= default_initializer)
 

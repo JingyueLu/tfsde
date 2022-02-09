@@ -14,7 +14,7 @@
 
 import argparse
 from sdegan.sde_gan import Generator, Discriminator
-from sdegan.utils import get_data, evaluate_loss
+from sdegan.utils import get_data, evaluate_loss, get_synthetic_data
 import tensorflow as tf
 from tensorflow import keras
 import tensorflow_addons as tfa
@@ -25,7 +25,10 @@ import glob
 def main(args):
 
     # Data
-    data_info, dataloaders = get_data(args.batch_size, args.t_size, args.val_included)
+    if args.synthetic:
+        data_info, dataloaders = get_synthetic_data(args.batch_size, args.val_included)
+    else:
+        data_info, dataloaders = get_data(args.batch_size, args.val_included)
     
     ts = data_info['ts']; data_size = data_info['data_size']
     train_dataloader = dataloaders['train']
@@ -33,28 +36,10 @@ def main(args):
         val_dataloader = dataloaders['val']
     test_dataloader = dataloaders['test']
 
-    # Models
 
-    # Modifying Weights Initialization
-    # init_mult1 and init_mult2 are used for weights initilization. In Pytorch, 
-    # Kaiming_uniform is used for linear layers, which has the formula U[-sqrt(1/in_features), -sqrt(1/in_features)]
-    # In tf, the distribution derived from the same paper is referred to as He_uniform and is defined as 
-    # U[-sqrt(6/in_features), sqrt(6/in_features)]. The default initializer is Xavier uniform initializer,
-    # which is defined as U[-sqrt(6/(in_features+out_features), sqrt(6/in_features+out_features)]
-    # Due to the difference, we add initilizer parameter for MLP layer for initializer adjustment
-
-    # Initialize He_uniform.     
-    g_ini_init = keras.initializers.HeUniform()
-    # 6 in the formula is computed as scale * 3. changing the scale value
-    # to change the scale of the initialized parameters
-    # Default scale value is 2
-    g_ini_init.scale = args.init_mult1
-    g_func_init = keras.initializers.HeUniform()
-    g_func_init.scale = args.init_mult2
     
     generator = Generator(data_size, args.init_noise_size, args.noise_size, 
-                          args.hidden_size, args.mlp_size, args.num_layers, 
-                          g_ini_init, g_func_init)
+                          args.hidden_size, args.mlp_size, args.num_layers)
 
     discriminator = Discriminator(data_size, args.hidden_size, args.mlp_size, args.num_layers)
 
@@ -63,19 +48,23 @@ def main(args):
     generator_optimizer = keras.optimizers.Adadelta(learning_rate=args.generator_lr)
     discriminator_optimizer = keras.optimizers.Adadelta(learning_rate=args.discriminator_lr)
 
+    # Use a log to record generator parameters with good performance
+    log_name = f'./sdegan/SdeGan_epochs_{args.epochs}_batch_{args.batch_size}_val_{args.val_included}_Synthetic_{args.synthetic}.log'
+    answ = os.path.exists(log_name)
+    if answ:
+        flog = open(log_name, 'a')
+        flog.write('\n\n')
 
+    else:
+        flog = open(log_name, 'w')
 
 
     # Train both generator and discriminator.
-    args.exp_name = f'SdeGan_epochs_{args.epochs}_ts_{args.t_size}_batch_{args.batch_size}_glr_{args.generator_lr}_dlr_{args.discriminator_lr}_wd_{args.weight_decay}_h_{args.hidden_size}_initN_{args.init_noise_size}_swa_{args.swa_step_start}_val_{args.val_included}'
+    args.exp_name = f'SdeGan_epochs_{args.epochs}_ts_2_batch_{args.batch_size}_glr_{args.generator_lr}_dlr_{args.discriminator_lr}_wd_{args.weight_decay}_h_{args.hidden_size}_initN_{args.init_noise_size}_val_{args.val_included}_Synthetic_{args.synthetic}_exp{args.exp_no}'
     tot_batches = tf.data.experimental.cardinality(train_dataloader).numpy()
     print(args.exp_name)
-
-    # Weight averaging really helps with GAN training.
-    average_period = int((args.epochs - args.swa_step_start) * tot_batches)
-    start_period = int(args.swa_step_start * tot_batches)
-    averaged_generator = tfa.optimizers.SWA(generator_optimizer, start_averaging = start_period, average_period= average_period)
-    averaged_discriminator = tfa.optimizers.SWA(discriminator_optimizer, start_averaging = start_period, average_period = average_period)
+    flog.write(args.exp_name)
+    flog.write('\n')
 
 
     args.save_path = os.path.join(args.save_path, args.exp_name)
@@ -91,7 +80,6 @@ def main(args):
     test_log_dir = args.save_path + '/test'
     train_summary_writer = tf.summary.create_file_writer(train_log_dir)
     val_summary_writer = tf.summary.create_file_writer(val_log_dir)
-    test_summary_writer = tf.summary.create_file_writer(test_log_dir)
 
     best_val_loss = float("inf")
 
@@ -111,18 +99,14 @@ def main(args):
                 real_score = discriminator(real_samples, generated=False)
                 loss = generated_score - real_score
                 train_loss(loss)
-                # Weight Decay (L2 regularization)
-                gl2_loss =  tf.add_n([tf.nn.l2_loss(v) for v in generator.trainable_variables])
-                dl2_loss =  tf.add_n([tf.nn.l2_loss(v) for v in discriminator.trainable_variables])
-                loss += (gl2_loss + dl2_loss) * args.weight_decay
                
             g_gradients, d_gradients = tape.gradient(loss, [generator.trainable_variables, discriminator.trainable_variables])
             
             # maximize the generator's loss
-            g_gradients *= -1
-            
-            averaged_generator.apply_gradients(zip(g_gradients, generator.trainable_variables))
-            averaged_discriminator.apply_gradients(zip(d_gradients, discriminator.trainable_variables))
+            neg_g_gradients  = [-1*i for i in g_gradients]
+
+            generator_optimizer.apply_gradients(zip(neg_g_gradients, generator.trainable_variables))
+            discriminator_optimizer.apply_gradients(zip(d_gradients, discriminator.trainable_variables))
             
             
             ###################
@@ -153,11 +137,17 @@ def main(args):
                 generator.save_weights(Gsnapshot_path)
                 Dsnapshot_path = args.model_path + '/Best_D_snapshot_{}_'.format(args.exp_name) + 'loss_{:.4f}_epoch_{}.tf'.format(val_loss, epoch)
                 discriminator.save_weights(Dsnapshot_path)
-                #import pdb; pdb.set_trace()
-
+                print(f'Current Estimates: Drift {generator.trainable_variables[0].numpy()[0]} Diffusion {generator.trainable_variables[1].numpy()[0]}')
+                best_val_drift = generator.trainable_variables[0].numpy()[0]
+                best_val_diffusion = generator.trainable_variables[1].numpy()[0]
+        
         with train_summary_writer.as_default():
             tf.summary.scalar('loss', train_loss.result(), step = epoch)
             print(f'train_loss: {train_loss.result()}')
+            if abs(train_loss.result()) < 1e-3:
+                print(f'Current Estimates: Drift {generator.trainable_variables[0].numpy()[0]} Diffusion {generator.trainable_variables[1].numpy()[0]}')
+                flog.write(f'loss={train_loss.result()} Estimates: Drift {generator.trainable_variables[0].numpy()[0]} Diffusion {generator.trainable_variables[1].numpy()[0]}\n')
+                flog.flush()
         
         # save model
         for f in glob.glob(args.model_path + '/G_snapshot_*'):
@@ -178,9 +168,17 @@ def main(args):
 
     test_loss = evaluate_loss(ts, test_dataloader, generator, discriminator, args.batch_size)
     print(f'test_loss: {test_loss}')
-    with train_summary_writer.as_default():
-        tf.summary.scalar('loss', test_loss, step = epoch)
+    data_mean = data_info['data_mean']
+    data_std = data_info['data_std']
+    print(f'Data Info: mean {data_mean} std {data_std}')
+    print(f'Estimated(Final) Drift {generator.trainable_variables[0].numpy()[0]} Diffusion {generator.trainable_variables[1].numpy()[0]}')
+    print(f'Estimated(BestVal) Drift {best_val_drift} Diffusion {best_val_diffusion}\n\n')
 
+    flog.write('final summary: \n')
+    flog.write(f'Data Info: mean {data_mean} std {data_std}\n')
+    flog.write(f'Estimated(Final) Drift {generator.trainable_variables[0].numpy()[0]} Diffusion {generator.trainable_variables[1].numpy()[0]}\n')
+    flog.write(f'Estimated(BestVal) Drift {best_val_drift} Diffusion {best_val_diffusion}\n\n')
+    flog.close()
 
 
 
@@ -189,27 +187,28 @@ def main(args):
 def get_args():
     parser = argparse.ArgumentParser()
     # Data processing
-    parser.add_argument('--t_size', nargs = '?', default = 22, type = int, help = 'How many days in one sample')
-    parser.add_argument('--batch_size', nargs = '?', default = 32,  type = int, help =  'Batch size.')
+    parser.add_argument('--batch_size', nargs = '?', default = 128,  type = int, help =  'Batch size.')
     parser.add_argument('--val_included', dest = 'val_included', action = 'store_true', help = 'whether to include validation set')
     parser.add_argument('--val_not_included', dest = 'val_included', action = 'store_false', help = 'whether to include validation set')
     parser.set_defaults(val_included=True)
+    # Whether to use synthetic data
+    parser.add_argument('--synthetic', dest = 'synthetic', action = 'store_true', help = 'whether to use the synthetic dataset')
+    parser.add_argument('--real_data', dest = 'synthetic', action = 'store_false', help = 'whether to use the synthetic dataset')
+    parser.set_defaults(synthetic=True)
+    parser.add_argument('--exp_no', nargs = '?', type = int, help = 'index of the rerun no')
 
     # Architectural hyperparameters. These are quite small for illustrative purposes.
-    parser.add_argument('--init_noise_size', nargs = '?', default = 3, type = int, help = 'How many noise dimensions to sample at the start of the SDE.')
-    parser.add_argument('--noise_size', nargs = '?', default = 2, type = int, help = 'How many dimensions the Brownian motion has.')
-    parser.add_argument('--hidden_size', nargs = '?', default = 8, type = int, help='How big the hidden size of the generator SDE and the discriminator CDE are.')
-    parser.add_argument('--mlp_size', nargs = '?', default = 8, type = int, help = 'How big the layers in the various MLPs are.')
+    parser.add_argument('--init_noise_size', nargs = '?', default = 1, type = int, help = 'How many noise dimensions to sample at the start of the SDE.')
+    parser.add_argument('--noise_size', nargs = '?', default = 1, type = int, help = 'How many dimensions the Brownian motion has.')
+    parser.add_argument('--hidden_size', nargs = '?', default = 1, type = int, help='How big the hidden size of the generator SDE and the discriminator CDE are.')
+    parser.add_argument('--mlp_size', nargs = '?', default = 1, type = int, help = 'How big the layers in the various MLPs are.')
     parser.add_argument('--num_layers', nargs = '?', default = 1, type = int, help = 'How many hidden layers to have in the various MLPs.')
 
     # Training hyperparameters. Be prepared to tune these very carefully, as with any GAN.
-    parser.add_argument('--generator_lr', nargs = '?', default = 2e-3, type = float, help ='Learning rate often needs careful tuning to the problem.')
-    parser.add_argument('--discriminator_lr', nargs = '?', default = 1e-3, type = float, help = 'Learning rate often needs careful tuning to the problem.')
-    parser.add_argument('--epochs', nargs = '?', default = 200,  type = int, help = 'How many steps to train both generator and discriminator for.')
-    parser.add_argument('--init_mult1', nargs = '?', default = 1, type = int, help = 'Changing the initial parameter size can help.')
-    parser.add_argument('--init_mult2', nargs = '?', default = 1, type = float )         
-    parser.add_argument('--weight_decay', nargs = '?', default = 0.01, type = float, help = 'Weight decay.')
-    parser.add_argument('--swa_step_start', nargs = '?', default = 180, type = int, help = 'When to start using stochastic weight averaging.')
+    parser.add_argument('--generator_lr', nargs = '?', default = 1e-1, type = float, help ='Learning rate often needs careful tuning to the problem.')
+    parser.add_argument('--discriminator_lr', nargs = '?', default = 1e-1, type = float, help = 'Learning rate often needs careful tuning to the problem.')
+    parser.add_argument('--epochs', nargs = '?', default = 400,  type = int, help = 'How many steps to train both generator and discriminator for.')
+    parser.add_argument('--weight_decay', nargs = '?', default = 0.0, type = float, help = 'Weight decay.')
     
     # Evaluate and save
     parser.add_argument('--save_path', nargs = '?', default = 'logs', type = str, help = 'log path')

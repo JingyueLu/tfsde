@@ -1,2 +1,0 @@
-model_checkpoint_path: "D_snapshot_SdeGan_epochs_100_ts_22_batch_128_glr_0.0002_dlr_0.0001_wd_0.0_h_8_initN_3_swa_80_val_False_loss_0.0870_epoch_99.tf"
-all_model_checkpoint_paths: "D_snapshot_SdeGan_epochs_100_ts_22_batch_128_glr_0.0002_dlr_0.0001_wd_0.0_h_8_initN_3_swa_80_val_False_loss_0.0870_epoch_99.tf"

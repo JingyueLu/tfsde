@@ -4,19 +4,21 @@ cuda_no=1
 
 # model parameters
 batch_size=128
-t_size=22
+epochs=400
 
-generator_lr=0.0002
-discriminator_lr=0.0001
-weight_decay=0.0
+# Synthetic Data
+for i in {1..5}
+do
+    echo "CUDA_VISIBLE_DEVICES=$cuda_no python sdegan/train.py --batch_size $batch_size --epochs $epochs --exp_no $i"
+    CUDA_VISIBLE_DEVICES=$cuda_no python sdegan/train.py --batch_size $batch_size --epochs $epochs --exp_no $i
+done
 
-epochs=100
-swa_step_start=80
-
-
-CUDA_VISIBLE_DEVICES=$cuda_no python sdegan/train.py --batch_size $batch_size --t_size $t_size --generator_lr $generator_lr --discriminator_lr $discriminator_lr --weight_decay $weight_decay --epochs $epochs --swa_step_start $swa_step_start --val_not_included
-
-
+# HSI Data
+for i in {1..5}
+do
+    echo "CUDA_VISIBLE_DEVICES=$cuda_no python sdegan/train.py --batch_size $batch_size --epochs $epochs --exp_no $i --real_data"
+    CUDA_VISIBLE_DEVICES=$cuda_no python sdegan/train.py --batch_size $batch_size --epochs $epochs --exp_no $i --real_data
+done
 
 
 

@@ -1,0 +1,2 @@
+model_checkpoint_path: "D_snapshot_SdeGan_epochs_400_ts_2_batch_128_glr_0.1_dlr_0.1_wd_0.0_h_1_initN_1_val_True_Synthetic_False_exp5_loss_-0.0041_epoch_399.tf"
+all_model_checkpoint_paths: "D_snapshot_SdeGan_epochs_400_ts_2_batch_128_glr_0.1_dlr_0.1_wd_0.0_h_1_initN_1_val_True_Synthetic_False_exp5_loss_-0.0041_epoch_399.tf"

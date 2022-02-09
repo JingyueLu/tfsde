@@ -118,7 +118,7 @@ class _SdeintAdjointMethod:
                 if i != 1:
                     aug_state = misc.flatten(aug_state)
                     aug_state = tf.expand_dims(aug_state, axis=0)  # dummy batch dimension
-
+            
             if self.y0_coeffs_provided == False:
                 out_1 = aug_state[1:1+len(grads)]
                 param_order = {}

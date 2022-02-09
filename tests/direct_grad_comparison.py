@@ -1,6 +1,6 @@
 import torch
 import tensorflow as tf
-from sdegan.sde_gan import Generator, Discriminator
+from sdegan_init_model import Generator, Discriminator
 import os
 
 
@@ -15,8 +15,8 @@ def tf_torch_compare(path = 'tests/torch_model_info/', batch_size =2, tol=1e-4):
     # NOTE: for this work, we have to remove all the random factor
     #       by seting the same fixed values for bm and init_noise
     
-    print("Warning: This test should only be conducted when all random factors are removed.") 
-    print("In this case, both models should  use the same fixed values for bm and init_noise.")
+    print("\n\nWarning: This test should only be conducted when all random factors are removed.") 
+    print("In this case, both models should  use the same fixed values for bm and init_noise.\n\n")
 
     # initilize the model
     model_info = torch.load(path+'model_info.pth')
@@ -93,7 +93,7 @@ def tf_torch_compare(path = 'tests/torch_model_info/', batch_size =2, tol=1e-4):
             layer_d_gradient = tf.transpose(layer_d_gradient)
         assert abs(layer_d_gradient.numpy()-torch_d_gradients[i]).mean() < tol, 'Discriminator Backward check fails'
 
-    print('Tensorflow-implemented Generator and Discriminator passed both Forward and Backward tests')
+    print('\n Tensorflow-implemented Generator and Discriminator passed both Forward and Backward tests\n')
     
 
 
