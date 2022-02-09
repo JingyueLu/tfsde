@@ -28,9 +28,8 @@ cd ..
 For the deterministic part, we need to check model implementation (Forward pass) and gradients computation (Backward propagation). To do so, we take a direct approach. We ran the origional pytorch library and, at a random point, record all model weights, initial random noise, brownian motion object, and all computed gradients. We then load the weights into the tensorflow model and set random components(initial random noise and brownian motion object) to be the same. We compare the forward computation results and backward gradients results with the recorded results of the pytorch model. The results should be the same.
 ```bash
 vim tfsde/_core/methods/reversible_heun.py
-# Uncomment all parts headed with Testing
-vim sdegan/sde_gan.py
-# Uncommet all parts headed with Testing
+# In the reversible_heun.py file, uncomment all parts headed with Testing
+
 python tests/direct_grad_comparison.py
 ```
 
